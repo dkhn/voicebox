@@ -6,6 +6,12 @@ import { useToast } from '@/components/ui/use-toast';
 import { apiClient } from '@/lib/api/client';
 import type { EffectConfig } from '@/lib/api/types';
 import { LANGUAGE_CODES, type LanguageCode } from '@/lib/constants/languages';
+import {
+  buildVoiceStyleInstruction,
+  EMOTION_PRESETS,
+  INTENSITY_PRESETS,
+  TONE_PRESETS,
+} from '@/lib/constants/voiceStyle';
 import { useGeneration } from '@/lib/hooks/useGeneration';
 import { useModelDownloadToast } from '@/lib/hooks/useModelDownloadToast';
 import { useGenerationSettings } from '@/lib/hooks/useSettings';
@@ -18,6 +24,9 @@ const generationSchema = z.object({
   seed: z.number().int().optional(),
   modelSize: z.enum(['1.7B', '0.6B', '1B', '3B']).optional(),
   instruct: z.string().max(500).optional(),
+  emotion: z.enum(EMOTION_PRESETS).optional(),
+  tone: z.enum(TONE_PRESETS).optional(),
+  intensity: z.enum(INTENSITY_PRESETS).optional(),
   engine: z
     .enum([
       'qwen',
@@ -66,6 +75,9 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
       seed: undefined,
       modelSize: '1.7B',
       instruct: '',
+      emotion: 'neutral',
+      tone: 'natural',
+      intensity: 'medium',
       engine: (selectedEngine as GenerationFormValues['engine']) || 'qwen',
       personality: false,
       ...options.defaultValues,
@@ -142,6 +154,14 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
       // Only Qwen CustomVoice actually honors the instruct kwarg at model level.
       // Base Qwen3-TTS accepts the kwarg but ignores it.
       const supportsInstruct = engine === 'qwen_custom_voice';
+      const voiceStyleInstruction = supportsInstruct
+        ? buildVoiceStyleInstruction({
+            emotion: data.emotion,
+            tone: data.tone,
+            intensity: data.intensity,
+            customInstruction: data.instruct,
+          })
+        : undefined;
       const effectsChain = options.getEffectsChain?.();
       // This now returns immediately with status="generating"
       const result = await generation.mutateAsync({
@@ -151,7 +171,7 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
         seed: data.seed,
         model_size: hasModelSizes ? data.modelSize : undefined,
         engine,
-        instruct: supportsInstruct ? data.instruct || undefined : undefined,
+        instruct: voiceStyleInstruction,
         personality: data.personality || undefined,
         max_chunk_chars: maxChunkChars,
         crossfade_ms: crossfadeMs,
@@ -162,13 +182,16 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
       // Track this generation for SSE status updates
       addPendingGeneration(result.id);
 
-      // Reset form immediately — user can start typing again
+      // Reset form immediately — user can start typing again, while style controls persist.
       form.reset({
         text: '',
         language: data.language,
         seed: undefined,
         modelSize: data.modelSize,
         instruct: '',
+        emotion: data.emotion,
+        tone: data.tone,
+        intensity: data.intensity,
         engine: data.engine,
         personality: data.personality,
       });
