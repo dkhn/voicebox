@@ -59,22 +59,21 @@ async def prepare_manipuri_native_reference(
 
     total_bytes = 0
     digest = hashlib.sha256()
-
-    with tempfile.NamedTemporaryFile(suffix=uploaded_ext, delete=False) as tmp:
-        while chunk := await file.read(UPLOAD_CHUNK_SIZE):
-            total_bytes += len(chunk)
-            if total_bytes > MAX_REFERENCE_BYTES:
-                tmp_path = tmp.name
-                Path(tmp_path).unlink(missing_ok=True)
-                raise HTTPException(
-                    status_code=413,
-                    detail="Native pronunciation reference is larger than 100 MB.",
-                )
-            digest.update(chunk)
-            tmp.write(chunk)
-        tmp_path = tmp.name
+    tmp_path = ""
 
     try:
+        with tempfile.NamedTemporaryFile(suffix=uploaded_ext, delete=False) as tmp:
+            tmp_path = tmp.name
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                total_bytes += len(chunk)
+                if total_bytes > MAX_REFERENCE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Native pronunciation reference is larger than 100 MB.",
+                    )
+                digest.update(chunk)
+                tmp.write(chunk)
+
         audio, sample_rate = await asyncio.to_thread(
             load_audio,
             tmp_path,
@@ -126,4 +125,5 @@ async def prepare_manipuri_native_reference(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to analyze reference audio: {exc}") from exc
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
