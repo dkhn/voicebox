@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
+import { Button } from '@/components/ui/button';
 import { FormControl } from '@/components/ui/form';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -10,6 +12,14 @@ import {
 } from '@/components/ui/select';
 import type { VoiceProfileResponse } from '@/lib/api/types';
 import { getLanguageOptionsForEngine } from '@/lib/constants/languages';
+import {
+  EMOTION_PRESETS,
+  INTENSITY_PRESETS,
+  TONE_PRESETS,
+  type EmotionPreset,
+  type IntensityPreset,
+  type TonePreset,
+} from '@/lib/constants/voiceStyle';
 import type { GenerationFormValues } from '@/lib/hooks/useGenerationForm';
 
 /**
@@ -19,8 +29,16 @@ import type { GenerationFormValues } from '@/lib/hooks/useGenerationForm';
 const ENGINE_OPTIONS = [
   { value: 'qwen:1.7B', label: 'Qwen3-TTS 1.7B', engine: 'qwen' },
   { value: 'qwen:0.6B', label: 'Qwen3-TTS 0.6B', engine: 'qwen' },
-  { value: 'qwen_custom_voice:1.7B', label: 'Qwen CustomVoice 1.7B', engine: 'qwen_custom_voice' },
-  { value: 'qwen_custom_voice:0.6B', label: 'Qwen CustomVoice 0.6B', engine: 'qwen_custom_voice' },
+  {
+    value: 'qwen_custom_voice:1.7B',
+    label: 'Qwen CustomVoice 1.7B',
+    engine: 'qwen_custom_voice',
+  },
+  {
+    value: 'qwen_custom_voice:0.6B',
+    label: 'Qwen CustomVoice 0.6B',
+    engine: 'qwen_custom_voice',
+  },
   { value: 'luxtts', label: 'LuxTTS', engine: 'luxtts' },
   { value: 'chatterbox', label: 'Chatterbox', engine: 'chatterbox' },
   { value: 'chatterbox_turbo', label: 'Chatterbox Turbo', engine: 'chatterbox_turbo' },
@@ -31,7 +49,7 @@ const ENGINE_OPTIONS = [
 
 const ENGINE_DESCRIPTIONS: Record<string, string> = {
   qwen: 'Multi-language, two sizes',
-  qwen_custom_voice: '9 preset voices, instruct control',
+  qwen_custom_voice: '9 preset voices, emotion and tone control',
   luxtts: 'Fast, English-focused',
   chatterbox: '23 languages, incl. Hebrew',
   chatterbox_turbo: 'English, [laugh] [cough] tags',
@@ -55,6 +73,10 @@ function getSelectValue(engine: string, modelSize?: string): string {
   if (engine === 'qwen_custom_voice') return `qwen_custom_voice:${modelSize || '1.7B'}`;
   if (engine === 'tada') return `tada:${modelSize || '1B'}`;
   return engine;
+}
+
+function formatPresetLabel(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function applyEngineSelection(form: UseFormReturn<GenerationFormValues>, value: string) {
@@ -116,6 +138,9 @@ interface EngineModelSelectorProps {
 export function EngineModelSelector({ form, compact, selectedProfile }: EngineModelSelectorProps) {
   const engine = form.watch('engine') || 'qwen';
   const modelSize = form.watch('modelSize');
+  const emotion = form.watch('emotion') ?? 'neutral';
+  const tone = form.watch('tone') ?? 'natural';
+  const intensity = form.watch('intensity') ?? 'medium';
   const selectValue = getSelectValue(engine, modelSize);
   const availableOptions = getAvailableOptions(selectedProfile);
 
@@ -132,21 +157,134 @@ export function EngineModelSelector({ form, compact, selectedProfile }: EngineMo
     ? 'h-8 text-xs bg-card border-border rounded-full hover:bg-background/50 transition-all'
     : undefined;
 
+  const hasActiveStyle = emotion !== 'neutral' || tone !== 'natural' || intensity !== 'medium';
+  const styleSummary = `${formatPresetLabel(emotion)} · ${formatPresetLabel(tone)} · ${formatPresetLabel(intensity)}`;
+
   return (
-    <Select value={selectValue} onValueChange={(v) => applyEngineSelection(form, v)}>
-      <FormControl>
-        <SelectTrigger className={triggerClass}>
-          <SelectValue />
-        </SelectTrigger>
-      </FormControl>
-      <SelectContent side={compact ? 'top' : undefined}>
-        {availableOptions.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value} className={itemClass}>
-            {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className={compact ? 'flex items-center gap-1' : 'space-y-2'}>
+      <div className="min-w-0 flex-1">
+        <Select value={selectValue} onValueChange={(v) => applyEngineSelection(form, v)}>
+          <FormControl>
+            <SelectTrigger className={triggerClass}>
+              <SelectValue />
+            </SelectTrigger>
+          </FormControl>
+          <SelectContent side={compact ? 'top' : undefined}>
+            {availableOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value} className={itemClass}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {engine === 'qwen_custom_voice' && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant={hasActiveStyle ? 'default' : 'outline'}
+              size="sm"
+              className={compact ? 'h-8 rounded-full px-3 text-xs shrink-0' : undefined}
+              title={styleSummary}
+              aria-label={`Voice style: ${styleSummary}`}
+            >
+              Style
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            side={compact ? 'top' : 'bottom'}
+            align="end"
+            className="w-80 space-y-4"
+          >
+            <div>
+              <div className="text-sm font-medium">Emotion & tone</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Controls Qwen CustomVoice delivery while preserving the selected speaker.
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium text-muted-foreground">Emotion</div>
+                <Select
+                  value={emotion}
+                  onValueChange={(value) => form.setValue('emotion', value as EmotionPreset)}
+                >
+                  <SelectTrigger className="h-9" aria-label="Emotion">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EMOTION_PRESETS.map((preset) => (
+                      <SelectItem key={preset} value={preset}>
+                        {formatPresetLabel(preset)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium text-muted-foreground">Tone</div>
+                <Select
+                  value={tone}
+                  onValueChange={(value) => form.setValue('tone', value as TonePreset)}
+                >
+                  <SelectTrigger className="h-9" aria-label="Tone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TONE_PRESETS.map((preset) => (
+                      <SelectItem key={preset} value={preset}>
+                        {formatPresetLabel(preset)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium text-muted-foreground">Intensity</div>
+                <Select
+                  value={intensity}
+                  onValueChange={(value) => form.setValue('intensity', value as IntensityPreset)}
+                >
+                  <SelectTrigger className="h-9" aria-label="Intensity">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTENSITY_PRESETS.map((preset) => (
+                      <SelectItem key={preset} value={preset}>
+                        {formatPresetLabel(preset)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <span className="text-xs text-muted-foreground" title={styleSummary}>
+                {styleSummary}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  form.setValue('emotion', 'neutral');
+                  form.setValue('tone', 'natural');
+                  form.setValue('intensity', 'medium');
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
+    </div>
   );
 }
 
